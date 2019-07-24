@@ -938,8 +938,7 @@ cdef class RDF(Compute):
         try:
             return plot.ax_to_bytes(self.plot())
         except AttributeError:
-
-
+            return None
 
 
 
@@ -1024,11 +1023,6 @@ cdef class FloatCFVec:
                 NeighborList to use to find bonds (Default value =
                 :code:`None`).
         """
-        if refValues is not None:
-            warnings.warn("Use ref_values instead of refValues. The refValues "
-                          "keyword argument will be removed in the future.",
-                          FreudDeprecationWarning)
-            ref_values = refValues
 
         cdef freud.box.Box b = freud.common.convert_box(box)
         if points is None:
@@ -1083,10 +1077,6 @@ cdef class FloatCFVec:
         return np.asarray(RDF)
 
     def getRDF(self):
-        warnings.warn("The getRDF function is deprecated in favor "
-                      "of the RDF class attribute and will be "
-                      "removed in a future version of freud.",
-                      FreudDeprecationWarning)
         return self.RDF
 
     @property
@@ -1094,10 +1084,6 @@ cdef class FloatCFVec:
         return freud.box.BoxFromCPP(self.thisptr.getBox())
 
     def getBox(self):
-        warnings.warn("The getBox function is deprecated in favor "
-                      "of the box class attribute and will be "
-                      "removed in a future version of freud.",
-                      FreudDeprecationWarning)
         return self.box
 
     def reset(self):
@@ -1107,9 +1093,6 @@ cdef class FloatCFVec:
         self.thisptr.reset()
 
     def resetCorrelationFunction(self):
-        warnings.warn("Use .reset() instead of this method. "
-                      "This method will be removed in the future.",
-                      FreudDeprecationWarning)
         self.reset()
 
     def compute(self, box, ref_points, ref_values, points=None, values=None,
@@ -1135,9 +1118,6 @@ cdef class FloatCFVec:
                 :code:`None`).
         """
         if refValues is not None:
-            warnings.warn("Use ref_values instead of refValues. The refValues "
-                          "keyword argument will be removed in the future.",
-                          FreudDeprecationWarning)
             ref_values = refValues
 
         self.reset()
@@ -1145,9 +1125,6 @@ cdef class FloatCFVec:
         return self
 
     def reduceCorrelationFunction(self):
-        warnings.warn("This method is automatically called internally. It "
-                      "will be removed in the future.",
-                      FreudDeprecationWarning)
         self.thisptr.reduceCorrelationFunction()
 
     @property
@@ -1158,10 +1135,6 @@ cdef class FloatCFVec:
         return np.asarray(counts, dtype=np.uint32)
 
     def getCounts(self):
-        warnings.warn("The getCounts function is deprecated in favor "
-                      "of the counts class attribute and will be "
-                      "removed in a future version of freud.",
-                      FreudDeprecationWarning)
         return self.counts
 
     @property
@@ -1172,10 +1145,6 @@ cdef class FloatCFVec:
         return np.asarray(R)
 
     def getR(self):
-        warnings.warn("The getR function is deprecated in favor "
-                      "of the R class attribute and will be "
-                      "removed in a future version of freud.",
-                      FreudDeprecationWarning)
         return self.R
 
 
@@ -1261,9 +1230,6 @@ cdef class FloatCFNematic:
                 :code:`None`).
         """
         if refValues is not None:
-            warnings.warn("Use ref_values instead of refValues. The refValues "
-                          "keyword argument will be removed in the future.",
-                          FreudDeprecationWarning)
             ref_values = refValues
 
         cdef freud.box.Box b = freud.common.convert_box(box)
@@ -1319,10 +1285,6 @@ cdef class FloatCFNematic:
         return np.asarray(RDF)
 
     def getRDF(self):
-        warnings.warn("The getRDF function is deprecated in favor "
-                      "of the RDF class attribute and will be "
-                      "removed in a future version of freud.",
-                      FreudDeprecationWarning)
         return self.RDF
 
     @property
@@ -1330,10 +1292,6 @@ cdef class FloatCFNematic:
         return freud.box.BoxFromCPP(self.thisptr.getBox())
 
     def getBox(self):
-        warnings.warn("The getBox function is deprecated in favor "
-                      "of the box class attribute and will be "
-                      "removed in a future version of freud.",
-                      FreudDeprecationWarning)
         return self.box
 
     def reset(self):
@@ -1343,9 +1301,6 @@ cdef class FloatCFNematic:
         self.thisptr.reset()
 
     def resetCorrelationFunction(self):
-        warnings.warn("Use .reset() instead of this method. "
-                      "This method will be removed in the future.",
-                      FreudDeprecationWarning)
         self.reset()
 
     def compute(self, box, ref_points, ref_values, points=None, values=None,
@@ -1371,9 +1326,6 @@ cdef class FloatCFNematic:
                 :code:`None`).
         """
         if refValues is not None:
-            warnings.warn("Use ref_values instead of refValues. The refValues "
-                          "keyword argument will be removed in the future.",
-                          FreudDeprecationWarning)
             ref_values = refValues
 
         self.reset()
@@ -1381,9 +1333,6 @@ cdef class FloatCFNematic:
         return self
 
     def reduceCorrelationFunction(self):
-        warnings.warn("This method is automatically called internally. It "
-                      "will be removed in the future.",
-                      FreudDeprecationWarning)
         self.thisptr.reduceCorrelationFunction()
 
     @property
@@ -1394,10 +1343,6 @@ cdef class FloatCFNematic:
         return np.asarray(counts, dtype=np.uint32)
 
     def getCounts(self):
-        warnings.warn("The getCounts function is deprecated in favor "
-                      "of the counts class attribute and will be "
-                      "removed in a future version of freud.",
-                      FreudDeprecationWarning)
         return self.counts
 
     @property
@@ -1408,9 +1353,5 @@ cdef class FloatCFNematic:
         return np.asarray(R)
 
     def getR(self):
-        warnings.warn("The getR function is deprecated in favor "
-                      "of the R class attribute and will be "
-                      "removed in a future version of freud.",
-                      FreudDeprecationWarning)
         return self.R
 
