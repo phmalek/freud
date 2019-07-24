@@ -938,4 +938,479 @@ cdef class RDF(Compute):
         try:
             return plot.ax_to_bytes(self.plot())
         except AttributeError:
-            return None
+
+
+
+
+
+cdef class FloatCFVec:
+    R"""Computes the real pairwise correlation function.
+
+    The correlation function is given by
+    :math:`C(r) = \left\langle s_1(0) \cdot s_2(r) \right\rangle` between
+    two sets of points :math:`p_1` (:code:`ref_points`) and :math:`p_2`
+    (:code:`points`) with associated values :math:`s_1` (:code:`ref_values`)
+    and :math:`s_2` (:code:`values`). Computing the correlation function
+    results in an array of the expected (average) product of all values at a
+    given radial distance :math:`r`.
+
+    The values of :math:`r` where the correlation function is computed are
+    controlled by the :code:`rmax` and :code:`dr` parameters to the
+    constructor. :code:`rmax` determines the maximum distance at which to
+    compute the correlation function and :code:`dr` is the step size for each
+    bin.
+
+    .. note::
+        **2D:** :class:`freud.density.FloatCF` properly handles 2D boxes.
+        The points must be passed in as :code:`[x, y, 0]`.
+        Failing to set z=0 will lead to undefined behavior.
+
+    .. note::
+        **Self-correlation:** It is often the case that we wish to compute the
+        correlation function of a set of points with itself. If :code:`points`
+        is the same as :code:`ref_points`, not provided, or :code:`None`, we
+        omit accumulating the self-correlation value in the first bin.
+
+    .. moduleauthor:: Matthew Spellings <mspells@umich.edu>
+
+    Args:
+        rmax (float):
+            Maximum pointwise distance to include in the calculation.
+        dr (float):
+            Bin size.
+
+    Attributes:
+        RDF ((:math:`N_{bins}`) :class:`numpy.ndarray`):
+            Expected (average) product of all values whose radial distance
+            falls within a given distance bin.
+        box (:class:`freud.box.Box`):
+            The box used in the calculation.
+        counts ((:math:`N_{bins}`) :class:`numpy.ndarray`):
+            The number of points in each histogram bin.
+        R ((:math:`N_{bins}`) :class:`numpy.ndarray`):
+            The centers of each bin.
+    """
+    cdef freud._density.CorrelationFunctionVec * thisptr
+    cdef rmax
+
+    def __cinit__(self, float rmax, float dr):
+        if dr <= 0.0:
+            raise ValueError("dr must be > 0")
+        self.thisptr = new freud._density.CorrelationFunctionVec(rmax, dr)
+        self.rmax = rmax
+
+    def __dealloc__(self):
+        del self.thisptr
+
+    def accumulate(self, box, ref_points, ref_values, points=None, values=None,
+                   nlist=None, refValues=None):
+        R"""Calculates the correlation function and adds to the current
+        histogram.
+
+        Args:
+            box (:class:`freud.box.Box`):
+                Simulation box.
+            ref_points ((:math:`N_{ref\_points}`, 3) :class:`numpy.ndarray`):
+                Reference points used to calculate the correlation function.
+            ref_values ((:math:`N_{ref\_points}`) :class:`numpy.ndarray`):
+                Real values used to calculate the correlation function.
+            points ((:math:`N_{points}`, 3) :class:`numpy.ndarray`, optional):
+                Points used to calculate the correlation function.
+                Uses :code:`ref_points` if not provided or :code:`None`.
+            values ((:math:`N_{points}`) :class:`numpy.ndarray`, optional):
+                Real values used to calculate the correlation function.
+                Uses :code:`ref_values` if not provided or :code:`None`.
+            nlist (:class:`freud.locality.NeighborList`, optional):
+                NeighborList to use to find bonds (Default value =
+                :code:`None`).
+        """
+        if refValues is not None:
+            warnings.warn("Use ref_values instead of refValues. The refValues "
+                          "keyword argument will be removed in the future.",
+                          FreudDeprecationWarning)
+            ref_values = refValues
+
+        cdef freud.box.Box b = freud.common.convert_box(box)
+        if points is None:
+            points = ref_points
+        if values is None:
+            values = ref_values
+        ref_points = freud.common.convert_array(
+            ref_points, 2, dtype=np.float32, contiguous=True,
+            array_name="ref_points")
+        points = freud.common.convert_array(
+            points, 2, dtype=np.float32, contiguous=True, array_name="points")
+        ref_values = freud.common.convert_array(
+            ref_values, 2, dtype=np.float32, contiguous=True, array_name="ref_values")
+        values = freud.common.convert_array(
+            values, 2, dtype=np.float32, contiguous=True, array_name="values")
+        if ref_points.shape[1] != 3 or points.shape[1] != 3:
+            raise ValueError("The 2nd dimension must have 3 values: x, y, z")
+        cdef float[:, ::1] l_ref_points = ref_points
+        cdef float[:, ::1] l_points
+        if ref_points is points:
+            l_points = l_ref_points
+        else:
+            l_points = points
+        cdef float[:, ::1] l_ref_values = ref_values
+        cdef float[:, ::1] l_values
+        if values is ref_values:
+            l_values = l_ref_values
+        else:
+            l_values = values
+
+        defaulted_nlist = freud.locality.make_default_nlist(
+            b, ref_points, points, self.rmax, nlist, None)
+        cdef freud.locality.NeighborList nlist_ = defaulted_nlist[0]
+
+        cdef unsigned int n_ref = l_ref_points.shape[0]
+        cdef unsigned int n_p = l_points.shape[0]
+        with nogil:
+            self.thisptr.accumulate(
+                dereference(b.thisptr), nlist_.get_ptr(),
+                <vec3[float]*> &l_ref_points[0, 0],
+                <vec3[float]*> &l_ref_values[0, 0], n_ref,
+                <vec3[float]*> &l_points[0, 0],
+                <vec3[float]*> &l_values[0, 0],
+                n_p)
+        return self
+
+    @property
+    def RDF(self):
+        cdef unsigned int n_bins = self.thisptr.getNBins()
+        cdef float[::1] RDF = \
+            <float[:n_bins]> self.thisptr.getRDF().get()
+        return np.asarray(RDF)
+
+    def getRDF(self):
+        warnings.warn("The getRDF function is deprecated in favor "
+                      "of the RDF class attribute and will be "
+                      "removed in a future version of freud.",
+                      FreudDeprecationWarning)
+        return self.RDF
+
+    @property
+    def box(self):
+        return freud.box.BoxFromCPP(self.thisptr.getBox())
+
+    def getBox(self):
+        warnings.warn("The getBox function is deprecated in favor "
+                      "of the box class attribute and will be "
+                      "removed in a future version of freud.",
+                      FreudDeprecationWarning)
+        return self.box
+
+    def reset(self):
+        R"""Resets the values of the correlation function histogram in
+        memory.
+        """
+        self.thisptr.reset()
+
+    def resetCorrelationFunction(self):
+        warnings.warn("Use .reset() instead of this method. "
+                      "This method will be removed in the future.",
+                      FreudDeprecationWarning)
+        self.reset()
+
+    def compute(self, box, ref_points, ref_values, points=None, values=None,
+                nlist=None, refValues=None):
+        R"""Calculates the correlation function for the given points. Will
+        overwrite the current histogram.
+
+        Args:
+            box (:class:`freud.box.Box`):
+                Simulation box.
+            ref_points ((:math:`N_{ref\_points}`, 3) :class:`numpy.ndarray`):
+                Reference points used to calculate the correlation function.
+            ref_values ((:math:`N_{ref\_points}`) :class:`numpy.ndarray`):
+                Real values used to calculate the correlation function.
+            points ((:math:`N_{points}`, 3) :class:`numpy.ndarray`, optional):
+                Points used to calculate the correlation function.
+                Uses :code:`ref_points` if not provided or :code:`None`.
+            values ((:math:`N_{points}`) :class:`numpy.ndarray`, optional):
+                Real values used to calculate the correlation function.
+                Uses :code:`ref_values` if not provided or :code:`None`.
+            nlist (:class:`freud.locality.NeighborList`, optional):
+                NeighborList to use to find bonds (Default value =
+                :code:`None`).
+        """
+        if refValues is not None:
+            warnings.warn("Use ref_values instead of refValues. The refValues "
+                          "keyword argument will be removed in the future.",
+                          FreudDeprecationWarning)
+            ref_values = refValues
+
+        self.reset()
+        self.accumulate(box, ref_points, ref_values, points, values, nlist)
+        return self
+
+    def reduceCorrelationFunction(self):
+        warnings.warn("This method is automatically called internally. It "
+                      "will be removed in the future.",
+                      FreudDeprecationWarning)
+        self.thisptr.reduceCorrelationFunction()
+
+    @property
+    def counts(self):
+        cdef unsigned int n_bins = self.thisptr.getNBins()
+        cdef unsigned int[::1] counts = \
+            <unsigned int[:n_bins]> self.thisptr.getCounts().get()
+        return np.asarray(counts, dtype=np.uint32)
+
+    def getCounts(self):
+        warnings.warn("The getCounts function is deprecated in favor "
+                      "of the counts class attribute and will be "
+                      "removed in a future version of freud.",
+                      FreudDeprecationWarning)
+        return self.counts
+
+    @property
+    def R(self):
+        cdef unsigned int n_bins = self.thisptr.getNBins()
+        cdef float[::1] R = \
+            <float[:n_bins]> self.thisptr.getR().get()
+        return np.asarray(R)
+
+    def getR(self):
+        warnings.warn("The getR function is deprecated in favor "
+                      "of the R class attribute and will be "
+                      "removed in a future version of freud.",
+                      FreudDeprecationWarning)
+        return self.R
+
+
+cdef class FloatCFNematic:
+    R"""Computes the real pairwise correlation function.
+
+    The correlation function is given by
+    :math:`C(r) = \left\langle s_1(0) \cdot s_2(r) \right\rangle` between
+    two sets of points :math:`p_1` (:code:`ref_points`) and :math:`p_2`
+    (:code:`points`) with associated values :math:`s_1` (:code:`ref_values`)
+    and :math:`s_2` (:code:`values`). Computing the correlation function
+    results in an array of the expected (average) product of all values at a
+    given radial distance :math:`r`.
+
+    The values of :math:`r` where the correlation function is computed are
+    controlled by the :code:`rmax` and :code:`dr` parameters to the
+    constructor. :code:`rmax` determines the maximum distance at which to
+    compute the correlation function and :code:`dr` is the step size for each
+    bin.
+
+    .. note::
+        **2D:** :class:`freud.density.FloatCF` properly handles 2D boxes.
+        The points must be passed in as :code:`[x, y, 0]`.
+        Failing to set z=0 will lead to undefined behavior.
+
+    .. note::
+        **Self-correlation:** It is often the case that we wish to compute the
+        correlation function of a set of points with itself. If :code:`points`
+        is the same as :code:`ref_points`, not provided, or :code:`None`, we
+        omit accumulating the self-correlation value in the first bin.
+
+    .. moduleauthor:: Matthew Spellings <mspells@umich.edu>
+
+    Args:
+        rmax (float):
+            Maximum pointwise distance to include in the calculation.
+        dr (float):
+            Bin size.
+
+    Attributes:
+        RDF ((:math:`N_{bins}`) :class:`numpy.ndarray`):
+            Expected (average) product of all values whose radial distance
+            falls within a given distance bin.
+        box (:class:`freud.box.Box`):
+            The box used in the calculation.
+        counts ((:math:`N_{bins}`) :class:`numpy.ndarray`):
+            The number of points in each histogram bin.
+        R ((:math:`N_{bins}`) :class:`numpy.ndarray`):
+            The centers of each bin.
+    """
+    cdef freud._density.NematicOrderParameterScalar * thisptr
+    cdef rmax
+
+    def __cinit__(self, float rmax, float dr):
+        if dr <= 0.0:
+            raise ValueError("dr must be > 0")
+        self.thisptr = new freud._density.NematicOrderParameterScalar(rmax, dr)
+        self.rmax = rmax
+
+    def __dealloc__(self):
+        del self.thisptr
+
+    def accumulate(self, box, ref_points, ref_values, points=None, values=None,
+                   nlist=None, refValues=None):
+        R"""Calculates the correlation function and adds to the current
+        histogram.
+
+        Args:
+            box (:class:`freud.box.Box`):
+                Simulation box.
+            ref_points ((:math:`N_{ref\_points}`, 3) :class:`numpy.ndarray`):
+                Reference points used to calculate the correlation function.
+            ref_values ((:math:`N_{ref\_points}`) :class:`numpy.ndarray`):
+                Real values used to calculate the correlation function.
+            points ((:math:`N_{points}`, 3) :class:`numpy.ndarray`, optional):
+                Points used to calculate the correlation function.
+                Uses :code:`ref_points` if not provided or :code:`None`.
+            values ((:math:`N_{points}`) :class:`numpy.ndarray`, optional):
+                Real values used to calculate the correlation function.
+                Uses :code:`ref_values` if not provided or :code:`None`.
+            nlist (:class:`freud.locality.NeighborList`, optional):
+                NeighborList to use to find bonds (Default value =
+                :code:`None`).
+        """
+        if refValues is not None:
+            warnings.warn("Use ref_values instead of refValues. The refValues "
+                          "keyword argument will be removed in the future.",
+                          FreudDeprecationWarning)
+            ref_values = refValues
+
+        cdef freud.box.Box b = freud.common.convert_box(box)
+        if points is None:
+            points = ref_points
+        if values is None:
+            values = ref_values
+        ref_points = freud.common.convert_array(
+            ref_points, 2, dtype=np.float32, contiguous=True,
+            array_name="ref_points")
+        points = freud.common.convert_array(
+            points, 2, dtype=np.float32, contiguous=True, array_name="points")
+        ref_values = freud.common.convert_array(
+            ref_values, 2, dtype=np.float32, contiguous=True, array_name="ref_values")
+        values = freud.common.convert_array(
+            values, 2, dtype=np.float32, contiguous=True, array_name="values")
+        if ref_points.shape[1] != 3 or points.shape[1] != 3:
+            raise ValueError("The 2nd dimension must have 3 values: x, y, z")
+        cdef float[:, ::1] l_ref_points = ref_points
+        cdef float[:, ::1] l_points
+        if ref_points is points:
+            l_points = l_ref_points
+        else:
+            l_points = points
+        cdef float[:, ::1] l_ref_values = ref_values
+        cdef float[:, ::1] l_values
+        if values is ref_values:
+            l_values = l_ref_values
+        else:
+            l_values = values
+
+        defaulted_nlist = freud.locality.make_default_nlist(
+            b, ref_points, points, self.rmax, nlist, None)
+        cdef freud.locality.NeighborList nlist_ = defaulted_nlist[0]
+
+        cdef unsigned int n_ref = l_ref_points.shape[0]
+        cdef unsigned int n_p = l_points.shape[0]
+        with nogil:
+            self.thisptr.accumulate(
+                dereference(b.thisptr), nlist_.get_ptr(),
+                <vec3[float]*> &l_ref_points[0, 0],
+                <vec3[float]*> &l_ref_values[0, 0], n_ref,
+                <vec3[float]*> &l_points[0, 0],
+                <vec3[float]*> &l_values[0, 0],
+                n_p)
+        return self
+
+    @property
+    def RDF(self):
+        cdef unsigned int n_bins = self.thisptr.getNBins()
+        cdef float[::1] RDF = \
+            <float[:n_bins]> self.thisptr.getRDF().get()
+        return np.asarray(RDF)
+
+    def getRDF(self):
+        warnings.warn("The getRDF function is deprecated in favor "
+                      "of the RDF class attribute and will be "
+                      "removed in a future version of freud.",
+                      FreudDeprecationWarning)
+        return self.RDF
+
+    @property
+    def box(self):
+        return freud.box.BoxFromCPP(self.thisptr.getBox())
+
+    def getBox(self):
+        warnings.warn("The getBox function is deprecated in favor "
+                      "of the box class attribute and will be "
+                      "removed in a future version of freud.",
+                      FreudDeprecationWarning)
+        return self.box
+
+    def reset(self):
+        R"""Resets the values of the correlation function histogram in
+        memory.
+        """
+        self.thisptr.reset()
+
+    def resetCorrelationFunction(self):
+        warnings.warn("Use .reset() instead of this method. "
+                      "This method will be removed in the future.",
+                      FreudDeprecationWarning)
+        self.reset()
+
+    def compute(self, box, ref_points, ref_values, points=None, values=None,
+                nlist=None, refValues=None):
+        R"""Calculates the correlation function for the given points. Will
+        overwrite the current histogram.
+
+        Args:
+            box (:class:`freud.box.Box`):
+                Simulation box.
+            ref_points ((:math:`N_{ref\_points}`, 3) :class:`numpy.ndarray`):
+                Reference points used to calculate the correlation function.
+            ref_values ((:math:`N_{ref\_points}`) :class:`numpy.ndarray`):
+                Real values used to calculate the correlation function.
+            points ((:math:`N_{points}`, 3) :class:`numpy.ndarray`, optional):
+                Points used to calculate the correlation function.
+                Uses :code:`ref_points` if not provided or :code:`None`.
+            values ((:math:`N_{points}`) :class:`numpy.ndarray`, optional):
+                Real values used to calculate the correlation function.
+                Uses :code:`ref_values` if not provided or :code:`None`.
+            nlist (:class:`freud.locality.NeighborList`, optional):
+                NeighborList to use to find bonds (Default value =
+                :code:`None`).
+        """
+        if refValues is not None:
+            warnings.warn("Use ref_values instead of refValues. The refValues "
+                          "keyword argument will be removed in the future.",
+                          FreudDeprecationWarning)
+            ref_values = refValues
+
+        self.reset()
+        self.accumulate(box, ref_points, ref_values, points, values, nlist)
+        return self
+
+    def reduceCorrelationFunction(self):
+        warnings.warn("This method is automatically called internally. It "
+                      "will be removed in the future.",
+                      FreudDeprecationWarning)
+        self.thisptr.reduceCorrelationFunction()
+
+    @property
+    def counts(self):
+        cdef unsigned int n_bins = self.thisptr.getNBins()
+        cdef unsigned int[::1] counts = \
+            <unsigned int[:n_bins]> self.thisptr.getCounts().get()
+        return np.asarray(counts, dtype=np.uint32)
+
+    def getCounts(self):
+        warnings.warn("The getCounts function is deprecated in favor "
+                      "of the counts class attribute and will be "
+                      "removed in a future version of freud.",
+                      FreudDeprecationWarning)
+        return self.counts
+
+    @property
+    def R(self):
+        cdef unsigned int n_bins = self.thisptr.getNBins()
+        cdef float[::1] R = \
+            <float[:n_bins]> self.thisptr.getR().get()
+        return np.asarray(R)
+
+    def getR(self):
+        warnings.warn("The getR function is deprecated in favor "
+                      "of the R class attribute and will be "
+                      "removed in a future version of freud.",
+                      FreudDeprecationWarning)
+        return self.R
+
