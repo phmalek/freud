@@ -72,3 +72,41 @@ cdef extern from "RDF.h" namespace "freud::density":
         shared_ptr[float] getR()
         shared_ptr[float] getNr()
         unsigned int getNBins()
+
+cdef extern from "CorrelationFunctionVec.h" namespace "freud::density":
+    cdef cppclass CorrelationFunctionVec:
+        CorrelationFunctionVec(float, float) except +
+        const freud._box.Box & getBox() const
+        void reset()
+        void accumulate(const freud._box.Box &,
+                        const freud._locality.NeighborList*,
+                        const vec3[float]*, const vec3[float]*,
+                        unsigned int,
+                        const vec3[float]*,
+                        const vec3[float]*,
+                        unsigned int) nogil except +
+        void reduceCorrelationFunction()
+        shared_ptr[float] getRDF()
+        shared_ptr[unsigned int] getCounts()
+        shared_ptr[float] getR()
+        unsigned int getNBins() const
+
+cdef extern from "NematicOrderParameterScalar.h" namespace "freud::density":
+    cdef cppclass NematicOrderParameterScalar:
+        NematicOrderParameterScalar(float, float) except +
+        const freud._box.Box & getBox() const
+        void reset()
+        void accumulate(const freud._box.Box &,
+                        const freud._locality.NeighborList*,
+                        const vec3[float]*, const vec3[float]*,
+                        unsigned int,
+                        const vec3[float]*,
+                        const vec3[float]*,
+                        unsigned int) nogil except +
+        void reduceCorrelationFunction()
+        shared_ptr[float] getRDF()
+        shared_ptr[unsigned int] getCounts()
+        shared_ptr[float] getR()
+        unsigned int getNBins() const
+
+
